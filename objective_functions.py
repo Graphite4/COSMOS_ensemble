@@ -52,32 +52,39 @@ class OneClassMSELoss(_Loss):
         return F.mse_loss(oc_input, oc_target)
 
 
-# class CrossEntropyLoss(_Loss):
-#
-#     def __init__(self, cls=0, cls_number=0):
-#         super().__init__()
-#         # weights = np.zeros((cls_number))
-#         # weights[int(cls)] = 1.0
-#         # weights = np.full(cls_number, 0.1/(cls_number-1))
-#         # weights[int(cls)] = 0.9
-#         # self.weights = torch.from_numpy(weights.astype("float32"))
-#
-#     def forward(self, input, target, **kwargs):
-#         # return F.cross_entropy(input, target, weight=self.weights)
-#         return F.cross_entropy(input, target, reduction='mean')
+class CrossEntropyLoss(_Loss):
+
+    def __init__(self, cls=0, cls_number=2):
+        super().__init__()
+        # weights = np.zeros((cls_number))
+        # weights[int(cls)] = 1.0
+        weights = np.full(cls_number, 0.1/(cls_number-1))
+        weights[int(cls)] = 0.9
+        self.weights = torch.from_numpy(weights.astype("float32"))
+
+    def forward(self, input, target, **kwargs):
+        inputs = F.softmax(input, dim=1)
+        return F.cross_entropy(inputs, target, weight=self.weights)
+        # return F.cross_entropy(input, target, reduction='mean')
 
 
-class CrossEntropyLoss(torch.nn.CrossEntropyLoss):
+class BinaryCrossEntropyLoss(torch.nn.BCEWithLogitsLoss):
 
-    def __init__(self):
-        super().__init__(reduction='mean')
+    def __init__(self, pos_weight=None):
+        super().__init__(reduction='mean', pos_weight=torch.Tensor([pos_weight]))
 
-    def __call__(self,outputs, target, **kwargs):
-        if outputs.ndim == 2:
-            outputs = torch.squeeze(outputs)
-        if target.dtype != torch.float:
-            target = target.float()
-        return super().__call__(outputs, target)
+
+
+    def __call__(self,input, target, **kwargs):
+        try:
+            if input.ndim == 2:
+                input = torch.squeeze(input)
+            if target.dtype != torch.float:
+                target = target.float()
+            return super().__call__(input, target)
+        except:
+            print('tutaj')
+        # return F.BCEWithLogitsLoss(outputs, target, reduction='mean', pos_weight=self.pos_weight)
 
 
 class FocalLoss(nn.Module):
@@ -158,8 +165,7 @@ class DEOHyperbolicTangentRelaxation():
     #     self.logits_name = logits_name
     #     self.s_name = s_name
     #     self.c = c
-    def __init__(self, sensible_argument_index, c=1):
-        self.sensible_argument_index = sensible_argument_index
+    def __init__(self, c=1):
         self.c = c
 
     # def __call__(self, **kwargs):
@@ -175,11 +181,11 @@ class DEOHyperbolicTangentRelaxation():
     #     return 1/n * torch.abs(torch.sum(torch.tanh(self.c * torch.relu(s_positive))) - torch.sum(torch.tanh(self.c * torch.relu(s_negative))))
 
     def __call__(self, input, target, **kwargs):
-        X = kwargs['X']
+        X_s = kwargs['X_s']
         n = input.shape[0]
         logits = torch.sigmoid(input)
-        s_negative = logits[(X[:, self.sensible_argument_index] == 0) & (target == 1)]
-        s_positive = logits[(X[:, self.sensible_argument_index] == 1) & (target == 1)]
+        s_negative = logits[(X_s == 0) & (target == 1)]
+        s_positive = logits[(X_s == 1) & (target == 1)]
 
         return 1/n * torch.abs(torch.sum(torch.tanh(self.c * torch.relu(s_positive))) - torch.sum(torch.tanh(self.c * torch.relu(s_negative))))
 
